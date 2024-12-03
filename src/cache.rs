@@ -22,13 +22,13 @@ pub struct PersistentCache<K: Eq + Hash + Clone, V: Clone> {
 }
 
 impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
+    // Supprime un nœud du cache en mettant à jour ses voisins.
+    // Si le nœud est en tête ou en queue, met également à jour les pointeurs `head` ou `tail`.
     fn remove_node(&mut self, key: &K) {
         if let Some(node) = self.map.get(key) {
-            // Clone les clés `prev` et `next` pour éviter des emprunts conflictuels
             let prev_key = node.prev.clone();
             let next_key = node.next.clone();
 
-            // Déconnecter le nœud actuel
             if let Some(prev_key) = &prev_key {
                 if let Some(prev_node) = self.map.get_mut(prev_key) {
                     prev_node.next = next_key.clone();
@@ -46,6 +46,8 @@ impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
             }
         }
     }
+
+    // Déplace un nœud spécifié en tête du cache, indiquant qu'il est le plus récemment utilisé.
     fn move_to_head(&mut self, key: K) {
         self.remove_node(&key);
 
@@ -68,6 +70,7 @@ impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
         self.map.insert(key, node);
     }
 
+    // Supprime le nœud le moins récemment utilisé (situé à la queue).
     fn pop_tail(&mut self) {
         if let Some(tail_key) = self.tail.clone() {
             self.remove_node(&tail_key);
@@ -81,6 +84,7 @@ impl<
         V: Clone + Serialize + for<'de> Deserialize<'de>,
     > Cache<K, V> for PersistentCache<K, V>
 {
+    // Initialise un nouveau cache LRU avec une capacité maximale spécifiée.
     fn new(capacity: usize) -> Self {
         PersistentCache {
             map: HashMap::new(),
@@ -90,15 +94,16 @@ impl<
         }
     }
 
+    // Insère un nouvel élément dans le cache.
+    // Si la clé existe déjà, met à jour sa valeur et le déplace en tête.
+    // Si la capacité est dépassée, évacue l'élément le moins récemment utilisé.
     fn insert(&mut self, key: K, value: V) {
         if self.map.contains_key(&key) {
-            // Mettre à jour et déplacer à la tête
             self.move_to_head(key.clone());
             if let Some(node) = self.map.get_mut(&key) {
                 node.value = value;
             }
         } else {
-            // Ajouter un nouveau nœud
             let new_node = Box::new(Node {
                 key: key.clone(),
                 value,
@@ -120,13 +125,13 @@ impl<
 
             self.map.insert(key.clone(), new_node);
 
-            // Si la capacité est dépassée, évacuer
             if self.map.len() > self.capacity {
                 self.pop_tail();
             }
         }
     }
 
+    // Récupère une valeur associée à une clé et la marque comme récemment utilisée.
     fn get(&mut self, key: &K) -> Option<&mut V> {
         if self.map.contains_key(key) {
             self.move_to_head(key.clone());
@@ -136,6 +141,7 @@ impl<
         }
     }
 
+    // Sauvegarde l'état actuel du cache dans un fichier sous format JSON.
     fn persist(&self, file_path: &str) -> io::Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
@@ -147,6 +153,7 @@ impl<
         Ok(())
     }
 
+    // Charge un état du cache depuis un fichier sauvegardé en format JSON.
     fn load(&mut self, file_path: &str) -> io::Result<()> {
         let mut file = OpenOptions::new().read(true).open(file_path)?;
         let mut data = String::new();
@@ -155,6 +162,7 @@ impl<
         Ok(())
     }
 
+    // Déplace un élément spécifié en tête du cache.
     fn move_to_head(&mut self, key: &K) {
         self.move_to_head(key.clone());
     }

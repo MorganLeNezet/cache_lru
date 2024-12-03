@@ -1,0 +1,22 @@
+Projet Cache LRU
+Ce projet implémente un cache LRU (Least Recently Used) persistant en Rust. Le cache LRU est une structure de données qui stocke un nombre limité d'éléments et évince les éléments les moins récemment utilisés lorsque la capacité maximale est atteinte.
+
+Structure du Projet
+Le projet est structuré comme suit :
+
+
+src/
+    cache.rs
+    lib.rs
+    main.rs
+    traits.rs
+tests/
+    integration_test.rs
+
+Fichiers Principaux
+
+src/cache.rs : Contient l'implémentation du cache LRU persistant.
+src/traits.rs : Définit le trait Cache utilisé par le cache LRU.
+src/lib.rs : Module principal du projet.
+src/main.rs : Exemple d'utilisation du cache LRU.
+tests/integration_test.rs : Tests d'intégration pour vérifier le bon fonctionnement du cache LRU.
