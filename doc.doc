@@ -1,9 +1,9 @@
 Projet Cache LRU
-Ce projet implémente un cache LRU (Least Recently Used) persistant en Rust. Le cache LRU est une structure de données qui stocke un nombre limité d'éléments et évince les éléments les moins récemment utilisés lorsque la capacité maximale est atteinte.
+Ce projet implémente un cache LRU (Least Recently Used) persistant en Rust. 
+Le cache LRU est une structure de données qui stocke un nombre limité d'éléments et évince les éléments les moins récemment utilisés lorsque la capacité maximale est atteinte.
 
 Structure du Projet
 Le projet est structuré comme suit :
-
 
 src/
     cache.rs
