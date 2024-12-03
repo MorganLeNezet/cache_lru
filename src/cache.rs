@@ -23,6 +23,7 @@ pub struct PersistentCache<K: Eq + Hash + Clone, V: Clone> {
 
 impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
     fn remove_node(&mut self, node: &mut Box<Node<K, V>>) {
+        // Retirer le nœud de la liste
         if let Some(mut prev) = node.prev.take() {
             prev.next = node.next.take();
         } else {
@@ -37,23 +38,32 @@ impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
     }
 
     fn move_to_head(&mut self, node: &mut Box<Node<K, V>>) {
-        self.remove_node(node);
-        node.next = self.head.take();
-        node.prev = None;
+        // Si le nœud est déjà à la tête, rien à faire
+        if self.head.as_ref() == Some(node) {
+            return;
+        }
 
-        let node_clone = node.clone();
-        if let Some(next) = &mut node.next {
-            next.prev = Some(node_clone);
+        // Retirer le nœud de sa position actuelle
+        self.remove_node(node);
+
+        // Déplacer le nœud en tête de la liste
+        node.prev = None;
+        node.next = self.head.take();
+
+        if let Some(ref mut next) = node.next {
+            next.prev = Some(node.clone());
         }
 
         self.head = Some(node.clone());
 
+        // Si la queue est vide, mettre à jour la queue
         if self.tail.is_none() {
             self.tail = Some(node.clone());
         }
     }
 
     fn pop_tail(&mut self) -> Option<Box<Node<K, V>>> {
+        // Retirer le nœud de la queue (le moins récemment utilisé)
         if let Some(mut tail) = self.tail.take() {
             self.remove_node(&mut tail);
             Some(tail)
@@ -63,11 +73,7 @@ impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
     }
 }
 
-impl<
-        K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>,
-        V: Clone + Serialize + for<'de> Deserialize<'de>,
-    > Cache<K, V> for PersistentCache<K, V>
-{
+impl<K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>, V: Clone + Serialize + for<'de> Deserialize<'de>> Cache<K, V> for PersistentCache<K, V> {
     fn new(capacity: usize) -> Self {
         PersistentCache {
             map: HashMap::new(),
@@ -78,12 +84,12 @@ impl<
     }
 
     fn insert(&mut self, key: K, value: V) {
+        // Si l'élément existe déjà, mettez-le à jour et déplacez-le en tête
         if let Some(node) = self.map.get_mut(&key) {
             node.value = value;
-            let mut node_clone = node.clone();
-            *node = node_clone.clone();
-            self.move_to_head(&mut node_clone);
+            self.move_to_head(node);
         } else {
+            // Insérer un nouveau nœud
             let mut new_node = Box::new(Node {
                 key: key.clone(),
                 value,
@@ -91,9 +97,9 @@ impl<
                 next: self.head.take(),
             });
 
-            let new_node_clone = new_node.clone();
-            if let Some(next) = &mut new_node.next {
-                next.prev = Some(new_node_clone);
+            // Relier le nœud à l'ancien nœud en tête, s'il existe
+            if let Some(ref mut next) = new_node.next {
+                next.prev = Some(new_node.clone());
             }
 
             self.head = Some(new_node.clone());
@@ -104,6 +110,7 @@ impl<
 
             self.map.insert(key, new_node);
 
+            // Eviction si nécessaire
             if self.map.len() > self.capacity {
                 if let Some(tail) = self.pop_tail() {
                     self.map.remove(&tail.key);
@@ -112,9 +119,9 @@ impl<
         }
     }
 
-    fn get(&self, key: &K) -> Option<V> {
-        if let Some(node) = self.map.get(key) {
-            Some(node.value.clone())
+    fn get(&mut self, key: &K) -> Option<&mut V> {
+        if let Some(node) = self.map.get_mut(key) {
+            Some(&mut node.value)
         } else {
             None
         }
@@ -137,5 +144,11 @@ impl<
         file.read_to_string(&mut data)?;
         *self = serde_json::from_str(&data)?;
         Ok(())
+    }
+
+    fn move_to_head(&mut self, key: &K) {
+        if let Some(node) = self.map.get_mut(key) {
+            self.move_to_head(node);
+        }
     }
 }
