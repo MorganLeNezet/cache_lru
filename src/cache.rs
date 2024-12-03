@@ -4,18 +4,18 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::fs::OpenOptions;
 use std::io::{self, Write, Read};
+use std::num::NonZeroUsize;
 use crate::traits::Cache;
 
-#[derive(Serialize, Deserialize, Debug)]
-
-struct SerializableLruCache<K: Eq + Hash, V> {
+#[derive(Serialize, Deserialize, Clone)]
+struct SerializableLruCache<K: Eq + Hash + Clone, V: Clone> {
     map: HashMap<K, V>,
     capacity: usize,
 }
 
-impl<K: Eq + Hash, V> From<LruCache<K, V>> for SerializableLruCache<K, V> {
+impl<K: Eq + Hash + Clone, V: Clone> From<LruCache<K, V>> for SerializableLruCache<K, V> {
     fn from(mut cache: LruCache<K, V>) -> Self {
-        let capacity = cache.cap();
+        let capacity = cache.cap().get();
         let mut map = HashMap::new();
         while let Some((k, v)) = cache.pop_lru() {
             map.insert(k, v);
@@ -24,9 +24,10 @@ impl<K: Eq + Hash, V> From<LruCache<K, V>> for SerializableLruCache<K, V> {
     }
 }
 
-impl<K: Eq + Hash, V> Into<LruCache<K, V>> for SerializableLruCache<K, V> {
+impl<K: Eq + Hash + Clone, V: Clone> Into<LruCache<K, V>> for SerializableLruCache<K, V> {
     fn into(self) -> LruCache<K, V> {
-        let mut cache = LruCache::new(self.capacity);
+        let capacity = NonZeroUsize::new(self.capacity).unwrap();
+        let mut cache = LruCache::new(capacity);
         for (k, v) in self.map {
             cache.put(k, v);
         }
@@ -34,11 +35,11 @@ impl<K: Eq + Hash, V> Into<LruCache<K, V>> for SerializableLruCache<K, V> {
     }
 }
 
-pub struct PersistentCache<K: Eq + Hash, V> {
+pub struct PersistentCache<K: Eq + Hash + Clone, V: Clone> {
     cache: SerializableLruCache<K, V>,
 }
 
-impl<K: Eq + std::hash::Hash + Serialize + for<'de> Deserialize<'de>, V: Serialize + for<'de> Deserialize<'de>> Cache<K, V> for PersistentCache<K, V> {
+impl<K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>, V: Clone + Serialize + for<'de> Deserialize<'de>> Cache<K, V> for PersistentCache<K, V> {
     fn new(capacity: usize) -> Self {
         PersistentCache {
             cache: SerializableLruCache {
@@ -54,11 +55,10 @@ impl<K: Eq + std::hash::Hash + Serialize + for<'de> Deserialize<'de>, V: Seriali
         self.cache = lru_cache.into();
     }
 
-    fn get(&self, key: &K) -> Option<&V> {
-        let lru_cache: LruCache<K, V> = self.cache.clone().into();
-        let result = lru_cache.get(key);
-        result
-    }
+    fn get(&self, key: &K) -> Option<V> {
+            let mut lru_cache: LruCache<K, V> = self.cache.clone().into();
+            lru_cache.get(key).cloned()
+        }
 
     fn persist(&self, file_path: &str) -> io::Result<()> {
         let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)?;
