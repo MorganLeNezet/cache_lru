@@ -9,71 +9,78 @@ use std::io::{self, Read, Write};
 struct Node<K, V> {
     key: K,
     value: V,
-    prev: Option<Box<Node<K, V>>>,
-    next: Option<Box<Node<K, V>>>,
+    prev: Option<K>,
+    next: Option<K>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PersistentCache<K: Eq + Hash + Clone, V: Clone> {
     map: HashMap<K, Box<Node<K, V>>>,
-    head: Option<Box<Node<K, V>>>,
-    tail: Option<Box<Node<K, V>>>,
+    head: Option<K>,
+    tail: Option<K>,
     capacity: usize,
 }
 
 impl<K: Eq + Hash + Clone, V: Clone> PersistentCache<K, V> {
-    fn remove_node(&mut self, node: &mut Box<Node<K, V>>) {
-        // Retirer le nœud de la liste
-        if let Some(mut prev) = node.prev.take() {
-            prev.next = node.next.take();
-        } else {
-            self.head = node.next.take();
-        }
+    fn remove_node(&mut self, key: &K) {
+        if let Some(node) = self.map.get(key) {
+            // Clone les clés `prev` et `next` pour éviter des emprunts conflictuels
+            let prev_key = node.prev.clone();
+            let next_key = node.next.clone();
 
-        if let Some(mut next) = node.next.take() {
-            next.prev = node.prev.take();
-        } else {
-            self.tail = node.prev.take();
+            // Déconnecter le nœud actuel
+            if let Some(prev_key) = &prev_key {
+                if let Some(prev_node) = self.map.get_mut(prev_key) {
+                    prev_node.next = next_key.clone();
+                }
+            } else {
+                self.head = next_key.clone();
+            }
+
+            if let Some(next_key) = &next_key {
+                if let Some(next_node) = self.map.get_mut(next_key) {
+                    next_node.prev = prev_key.clone();
+                }
+            } else {
+                self.tail = prev_key.clone();
+            }
         }
     }
+    fn move_to_head(&mut self, key: K) {
+        self.remove_node(&key);
 
-    fn move_to_head(&mut self, node: &mut Box<Node<K, V>>) {
-        // Si le nœud est déjà à la tête, rien à faire
-        if self.head.as_ref() == Some(node) {
-            return;
-        }
-
-        // Retirer le nœud de sa position actuelle
-        self.remove_node(node);
-
-        // Déplacer le nœud en tête de la liste
+        let mut node = self.map.remove(&key).expect("Node should exist");
         node.prev = None;
-        node.next = self.head.take();
+        node.next = self.head.clone();
 
-        if let Some(ref mut next) = node.next {
-            next.prev = Some(node.clone());
+        if let Some(head_key) = &self.head {
+            if let Some(head_node) = self.map.get_mut(head_key) {
+                head_node.prev = Some(key.clone());
+            }
         }
 
-        self.head = Some(node.clone());
+        self.head = Some(key.clone());
 
-        // Si la queue est vide, mettre à jour la queue
         if self.tail.is_none() {
-            self.tail = Some(node.clone());
+            self.tail = Some(key.clone());
         }
+
+        self.map.insert(key, node);
     }
 
-    fn pop_tail(&mut self) -> Option<Box<Node<K, V>>> {
-        // Retirer le nœud de la queue (le moins récemment utilisé)
-        if let Some(mut tail) = self.tail.take() {
-            self.remove_node(&mut tail);
-            Some(tail)
-        } else {
-            None
+    fn pop_tail(&mut self) {
+        if let Some(tail_key) = self.tail.clone() {
+            self.remove_node(&tail_key);
+            self.map.remove(&tail_key);
         }
     }
 }
 
-impl<K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>, V: Clone + Serialize + for<'de> Deserialize<'de>> Cache<K, V> for PersistentCache<K, V> {
+impl<
+        K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>,
+        V: Clone + Serialize + for<'de> Deserialize<'de>,
+    > Cache<K, V> for PersistentCache<K, V>
+{
     fn new(capacity: usize) -> Self {
         PersistentCache {
             map: HashMap::new(),
@@ -84,44 +91,46 @@ impl<K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>, V: Clone + Se
     }
 
     fn insert(&mut self, key: K, value: V) {
-        // Si l'élément existe déjà, mettez-le à jour et déplacez-le en tête
-        if let Some(node) = self.map.get_mut(&key) {
-            node.value = value;
-            self.move_to_head(node);
+        if self.map.contains_key(&key) {
+            // Mettre à jour et déplacer à la tête
+            self.move_to_head(key.clone());
+            if let Some(node) = self.map.get_mut(&key) {
+                node.value = value;
+            }
         } else {
-            // Insérer un nouveau nœud
-            let mut new_node = Box::new(Node {
+            // Ajouter un nouveau nœud
+            let new_node = Box::new(Node {
                 key: key.clone(),
                 value,
                 prev: None,
-                next: self.head.take(),
+                next: self.head.clone(),
             });
 
-            // Relier le nœud à l'ancien nœud en tête, s'il existe
-            if let Some(ref mut next) = new_node.next {
-                next.prev = Some(new_node.clone());
+            if let Some(head_key) = &self.head {
+                if let Some(head_node) = self.map.get_mut(head_key) {
+                    head_node.prev = Some(key.clone());
+                }
             }
 
-            self.head = Some(new_node.clone());
+            self.head = Some(key.clone());
 
             if self.tail.is_none() {
-                self.tail = Some(new_node.clone());
+                self.tail = Some(key.clone());
             }
 
-            self.map.insert(key, new_node);
+            self.map.insert(key.clone(), new_node);
 
-            // Eviction si nécessaire
+            // Si la capacité est dépassée, évacuer
             if self.map.len() > self.capacity {
-                if let Some(tail) = self.pop_tail() {
-                    self.map.remove(&tail.key);
-                }
+                self.pop_tail();
             }
         }
     }
 
     fn get(&mut self, key: &K) -> Option<&mut V> {
-        if let Some(node) = self.map.get_mut(key) {
-            Some(&mut node.value)
+        if self.map.contains_key(key) {
+            self.move_to_head(key.clone());
+            self.map.get_mut(key).map(|node| &mut node.value)
         } else {
             None
         }
@@ -147,8 +156,6 @@ impl<K: Eq + Hash + Clone + Serialize + for<'de> Deserialize<'de>, V: Clone + Se
     }
 
     fn move_to_head(&mut self, key: &K) {
-        if let Some(node) = self.map.get_mut(key) {
-            self.move_to_head(node);
-        }
+        self.move_to_head(key.clone());
     }
 }

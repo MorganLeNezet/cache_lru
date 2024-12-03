@@ -1,1 +1,1 @@
-{"map":{"key1":{"key":"key1","value":"value1","prev":null,"next":null}},"head":{"key":"key1","value":"value1","prev":null,"next":null},"tail":{"key":"key1","value":"value1","prev":null,"next":null},"capacity":2}
+{"map":{"key1":{"key":"key1","value":"value1","prev":null,"next":null}},"head":"key1","tail":"key1","capacity":2}
