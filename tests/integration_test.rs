@@ -1,5 +1,5 @@
-use my_cache_lib::cache::PersistentCache;
-use my_cache_lib::traits::Cache;
+use project::cache::PersistentCache;
+use project::traits::Cache;
 
 #[test]
 fn test_insert_and_get() {

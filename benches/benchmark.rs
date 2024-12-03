@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use my_cache_lib::cache::PersistentCache;
-use my_cache_lib::traits::Cache;
+use project::cache::PersistentCache;
+use project::traits::Cache;
 
 fn cache_benchmark(c: &mut Criterion) {
     c.bench_function("insert", |b| {
